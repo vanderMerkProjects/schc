@@ -1,0 +1,29 @@
+{
+  "extName": { "message": "Selective History Cleaner" },
+  "extDesc": { "message": "Keeps chosen sites out of your history (and optionally clears cookies/site data)." },
+
+  "ctxAddSite": { "message": "Selective Cleaner: Add this site" },
+  "ctxAddLinkSite": { "message": "Selective Cleaner: Add link site" },
+
+  "uiTitle": { "message": "Selective History Cleaner" },
+  "uiAddSite": { "message": "Add this site" },
+  "uiCookies": { "message": "Cookies" },
+  "uiSiteData": { "message": "Site data" },
+  "uiRules": { "message": "Rules" },
+  "uiAddRule": { "message": "+ Add rule" },
+  "uiSaveRules": { "message": "Save rules" },
+  "uiRemove": { "message": "Remove" },
+  "uiImported": { "message": "Imported ✓" },
+  "uiExported": { "message": "Exported ✓" },
+  "uiSaved": { "message": "Rules saved ✓" },
+  "uiAdded": { "message": "Added: $1" },
+  "uiExists": { "message": "Already listed: $1" },
+  "uiPausedGlobal10": { "message": "Paused globally for 10m" },
+  "uiPausedGlobal60": { "message": "Paused globally for 1h" },
+  "uiPausedHost10": { "message": "Paused $1 for 10m" },
+  "uiResumedHost": { "message": "Resumed $1" },
+  "uiNoUrl": { "message": "No active tab URL" },
+  "uiOnList": { "message": "On the list" },
+  "uiNotOnList": { "message": "Not on the list" },
+  "uiFooterError": { "message": "Last error — click to view" }
+}

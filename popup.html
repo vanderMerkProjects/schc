@@ -1,0 +1,120 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Selective History Cleaner</title>
+    <style>
+        :root { --bg:#fff; --fg:#0f172a; --muted:#64748b; --border:#e2e8f0; --accent:#111827; --ok:#16a34a; --err:#b91c1c; }
+        html,body{margin:0;padding:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:var(--fg);background:var(--bg)}
+        body{width:360px;min-height:230px;border-radius:16px}
+        .wrap{padding:14px}
+        .card{border:1px solid var(--border);border-radius:14px;padding:12px;box-shadow:0 4px 8px rgba(0,0,0,.04);background:#fff}
+        h1{font-size:16px;margin:0 0 10px}
+        .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+        .grow{flex:1}
+        .muted{color:var(--muted);font-size:12px}
+        .chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:999px;padding:4px 10px;font-size:12px;color:var(--muted)}
+        .chip.ok{color:var(--ok);border-color:#bbf7d0;background:#f0fdf4}
+
+        .btn{border:1px solid var(--border);border-radius:10px;background:#fff;padding:8px 10px;cursor:pointer;font-size:13px}
+        .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+        .btn.small{padding:6px 8px;font-size:12px}
+        .btn.toggle{border-radius:999px}
+        .btn.toggle.active{background:#f0fdf4;border-color:#bbf7d0;color:#166534}
+        .btn.danger{border-color:#fecaca;color:#b91c1c;background:#fff}
+
+        .btn:focus{outline:2px solid #94a3b8; outline-offset: 2px;}
+
+        table{width:100%;border-collapse:collapse;table-layout:fixed}
+        th,td{padding:6px 4px;border-bottom:1px solid var(--border);vertical-align:middle}
+        th{text-align:center;font-size:12px;color:var(--muted)}
+        th:nth-child(1), td:nth-child(1){width:58%; text-align:left;}
+        th:nth-child(2), td:nth-child(2){width:12%; text-align:center;}
+        th:nth-child(3), td:nth-child(3){width:12%; text-align:center;}
+        th:nth-child(4), td:nth-child(4){width:18%; text-align:right;}
+        th.icon{font-size:0}
+        th.icon.cookies::after{content:"🍪"; font-size:14px; line-height:1;}
+        th.icon.storage::after{content:"💾"; font-size:14px; line-height:1;}
+        input[type="text"]{
+            width:100%;max-width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-size:13px;
+            overflow:hidden; white-space:nowrap; text-overflow:ellipsis;
+        }
+
+        details{border:1px solid var(--border);border-radius:12px}
+        summary{cursor:pointer;list-style:none;outline:none;font-weight:600}
+        summary::-webkit-details-marker{display:none}
+        /* Give the Rules title and icons a bit of breathing room from edges */
+        .summary-inner{display:flex;justify-content:space-between;align-items:center;padding:6px 8px;}
+        /* Hide import/export when collapsed */
+        details:not([open]) .summary-actions{display:none;}
+
+        .panel{padding:8px 12px 12px}
+        .footer{display:flex;align-items:center;justify-content:space-between;margin-top:8px}
+        .errchip{font-size:12px; color:var(--err); cursor:pointer}
+    </style>
+
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card" role="region" aria-label="Selective History Cleaner">
+        <h1 id="title" data-i18n="uiTitle">Selective History Cleaner</h1>
+        <div class="row" aria-live="polite">
+          <div class="grow">
+            <div id="displayHost" class="muted">Loading…</div>
+          </div>
+          <div id="matchChip" class="chip" aria-live="polite">Checking…</div>
+        </div>
+
+        <div class="row" style="margin-top:10px;">
+          <button id="addThisSite" class="btn primary" data-i18n="uiAddSite">Add this site</button>
+          <button id="toggleCookies" class="btn small toggle" aria-pressed="false" title="Toggle clearing cookies for this site">+ 🍪 <span data-i18n="uiCookies">Cookies</span></button>
+          <button id="toggleStorage" class="btn small toggle" aria-pressed="false" title="Toggle clearing site data for this site">+ 💾 <span data-i18n="uiSiteData">Site data</span></button>
+          <button id="pauseHost10" class="btn small" title="Pause on this site for 10 minutes">⏸10m</button>
+          <button id="pauseGlobal10" class="btn small" title="Pause globally for 10 minutes">⏸🌐10m</button>
+          <button id="pauseGlobal60" class="btn small" title="Pause globally for 1 hour">⏸🌐1h</button>
+        </div>
+        <div id="miniStatus" class="muted" style="margin-top:6px;"></div>
+        <div id="pauseStatus" class="muted" style="margin-top:2px;"></div>
+
+        <details id="settings" style="margin-top:12px;">
+        <summary>
+            <div class="summary-inner">
+            <span data-i18n="uiRules">Rules</span>
+            <span class="row summary-actions" style="gap:8px;">
+                <input type="file" id="importFile" accept="application/json" style="display:none" />
+                <button id="importBtn" class="btn small" title="Import rules (merge)">📥</button>
+                <button id="exportBtn" class="btn small" title="Export rules">📤</button>
+            </span>
+            </div>
+        </summary>
+
+          <div class="panel">
+            <table aria-label="Rules table">
+              <thead>
+                <tr>
+                  <th data-i18n="uiRules">Pattern</th>
+                  <th class="icon cookies" title="Cookies"></th>
+                  <th class="icon storage" title="Site data"></th>
+                  <th class="right" data-i18n="uiRemove">Remove</th>
+                </tr>
+              </thead>
+              <tbody id="rulesBody"></tbody>
+            </table>
+            <div class="row" style="margin-top:8px;">
+              <button id="addRule" class="btn" data-i18n="uiAddRule">+ Add rule</button>
+              <button id="saveRules" class="btn primary" data-i18n="uiSaveRules">Save rules</button>
+              <div id="status" class="muted" role="status" aria-live="polite"></div>
+            </div>
+          </div>
+        </details>
+
+        <div class="footer">
+          <span class="muted" id="version">v1.6.0</span>
+          <span id="lastError" class="errchip" style="display:none;">❗</span>
+        </div>
+      </div>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
