@@ -16,10 +16,10 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- `chrome.runtime.onStartup` listener to rebuild the rule cache after Chrome restarts and kills the service worker — without this, the extension would silently stop cleaning history until the popup was opened
+- Top-level `cacheReady` promise so event handlers (`history.onVisited`, `webNavigation.onCommitted`) await initial cache population even when the service worker is restarted by those events without triggering `onStartup`
+- `chrome.runtime.onStartup` listener as an additional cache rebuild trigger
 - Badge refresh for all active tabs whenever rules change in storage
-- ReDoS guard: `regex:` patterns longer than 200 characters or with nested quantifiers (`+*`, `**`, etc.) are rejected
-- `onStartup` cache rebuild ensures the extension works correctly after Chrome restarts
+- ReDoS guard: `regex:` patterns longer than 200 characters or with nested quantifiers (`+*`, `**`, etc.) are now rejected both at match time and during import, with a count of skipped patterns reported back to the popup
 - Status messages in the rules panel now auto-clear after 3 seconds
 - `stopPropagation` on the import/export buttons so clicking them no longer closes the Rules panel
 - `aria-label` attributes on rule table checkboxes for screen reader accessibility

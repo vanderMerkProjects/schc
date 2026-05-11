@@ -31,20 +31,23 @@ const isWebUrl = (url) => typeof url === "string" && /^https?:\/\//i.test(url);
 // --- rule cache (snappy matching)
 let ruleCache = []; // [{pattern, clearCookies, clearStorage, test(url)}]
 
+// Shared validation used by both makeTester and the import path so that a
+// pattern rejected at match time is also rejected at import time.
+function isPatternSafe(pat) {
+  if (!pat || typeof pat !== "string" || pat.length > 300) return false;
+  if (!pat.startsWith("regex:")) return true;
+  const raw = pat.slice(6);
+  if (raw.length > 200 || /(\+|\*|\?|\{[^}]+\})(\+|\*|\?|\{)/.test(raw)) return false;
+  try { new RegExp(raw); return true; } catch (_e) { return false; }
+}
+
 function makeTester(pat) {
-  if (!pat || typeof pat !== "string") return () => false;
-  // guard against excessively long patterns
-  if (pat.length > 300) return () => false;
+  if (!isPatternSafe(pat)) return () => false;
 
   // regex:
   if (pat.startsWith("regex:")) {
-    const rawPat = pat.slice(6);
-    // ReDoS guard: reject patterns that are too long or have nested quantifiers
-    if (rawPat.length > 200 || /(\+|\*|\?|\{[^}]+\})(\+|\*|\?|\{)/.test(rawPat)) return () => false;
-    try {
-      const re = new RegExp(rawPat);
-      return (url) => isWebUrl(url) && re.test(url);
-    } catch { return () => false; }
+    const re = new RegExp(pat.slice(6)); // safe: validated by isPatternSafe
+    return (url) => isWebUrl(url) && re.test(url);
   }
 
   // wildcard / full-url-ish:
@@ -73,6 +76,11 @@ async function rebuildCache() {
     test: makeTester(r.pattern)
   }));
 }
+
+// Kick off cache population immediately so event handlers don't race a cold
+// service-worker restart (MV3 SWs can be woken by history/navigation events
+// without firing onInstalled or onStartup).
+const cacheReady = rebuildCache();
 
 chrome.runtime.onInstalled.addListener(async () => {
   // migrate old blocklist -> rules
@@ -156,6 +164,7 @@ async function isUrlPaused(url) {
 // --- instant clean on visit
 chrome.history.onVisited.addListener(async (item) => {
   try {
+    await cacheReady;
     if (await isUrlPaused(item.url)) return;
     const matched = ruleCache.filter((r) => r.test(item.url));
     if (!matched.length) return;
@@ -167,6 +176,7 @@ chrome.history.onVisited.addListener(async (item) => {
 // --- also catch committed navigations
 chrome.webNavigation.onCommitted.addListener(async ({ tabId, url }) => {
   try {
+    await cacheReady;
     if (!isWebUrl(url) || (await isUrlPaused(url))) return;
     const matched = ruleCache.filter((r) => r.test(url));
     if (!matched.length) return;
@@ -226,9 +236,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const cur = await chrome.storage.sync.get("rules");
         const map = new Map();
         (Array.isArray(cur.rules) ? cur.rules : []).forEach((r) => map.set(r.pattern, r));
+        let rejected = 0;
         inc.forEach((r) => {
           const p = String(r?.pattern || "").trim();
-          if (!p || p.length > 300) return;
+          if (!p) return;
+          if (!isPatternSafe(p)) { rejected++; return; }
           const prev = map.get(p) || { pattern: p, clearCookies: false, clearStorage: false };
           map.set(p, {
             pattern: p,
@@ -238,7 +250,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         });
         await chrome.storage.sync.set({ rules: Array.from(map.values()) });
         await rebuildCache();
-        sendResponse({ ok: true });
+        sendResponse({ ok: true, rejected });
       } catch (e) { await recordError(e, "IMPORT_RULES"); sendResponse({ ok: false }); }
       return;
     }

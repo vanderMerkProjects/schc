@@ -64,17 +64,17 @@ async function init() {
     if (!currentHost) return;
     await sendMessage({ type: "SET_HOST_PAUSE", host: currentHost, ms: 10 * 60 * 1000 });
     mini(chrome.i18n.getMessage("uiPausedHost10", [currentHost]) || `Paused ${currentHost} for 10m`);
-    await updatePauseStatus(true);
+    await updatePauseStatus();
   });
   $("pauseGlobal10").addEventListener("click", async () => {
     await sendMessage({ type: "SET_GLOBAL_PAUSE", ms: 10 * 60 * 1000 });
     mini(chrome.i18n.getMessage("uiPausedGlobal10") || "Paused globally for 10m");
-    await updatePauseStatus(true);
+    await updatePauseStatus();
   });
   $("pauseGlobal60").addEventListener("click", async () => {
     await sendMessage({ type: "SET_GLOBAL_PAUSE", ms: 60 * 60 * 1000 });
     mini(chrome.i18n.getMessage("uiPausedGlobal60") || "Paused globally for 1h");
-    await updatePauseStatus(true);
+    await updatePauseStatus();
   });
 
   // rules panel
@@ -115,7 +115,7 @@ async function refreshLastErrorChip() {
   if (lastErrorCache) el.title = chrome.i18n.getMessage("uiFooterError") || "Last error — click to view";
 }
 
-async function updatePauseStatus(refreshBadge = false) {
+async function updatePauseStatus() {
   const res = await sendMessage({ type: "GET_PAUSE_STATE", url: currentUrl || "" });
   if (!res?.ok) return;
   const { globalUntil, host, hostUntil, now } = res;
@@ -129,13 +129,9 @@ async function updatePauseStatus(refreshBadge = false) {
     if (host && hostUntil > now) {
       await sendMessage({ type: "CLEAR_HOST_PAUSE", host });
       mini(chrome.i18n.getMessage("uiResumedHost", [host]) || `Resumed ${host}`);
-      await updatePauseStatus(true);
+      await updatePauseStatus();
     }
   };
-  if (refreshBadge) {
-    // poke the background so it updates the active tab's badge
-    await sendMessage({ type: "TEST_MATCH", url: currentUrl || "" });
-  }
 }
 function fmtTime(ts) { return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
 
@@ -316,7 +312,8 @@ async function onImportFile(e) {
       const all = await chrome.storage.sync.get("rules");
       rules = Array.isArray(all.rules) ? all.rules : [];
       renderRules();
-      status(chrome.i18n.getMessage("uiImported") || "Imported ✓");
+      const base = chrome.i18n.getMessage("uiImported") || "Imported ✓";
+      status(res.rejected ? `${base} (${res.rejected} invalid pattern${res.rejected > 1 ? "s" : ""} skipped)` : base);
       await refreshMatchChip();
       refreshHostToggleButtons();
     } else {
