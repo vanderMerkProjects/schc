@@ -60,8 +60,8 @@ function hasNestedQuantifier(raw) {
 }
 
 function isPatternSafe(pat) {
-  if (!pat || typeof pat !== "string" || pat.length > 300) return false;
-  if (!pat.startsWith("regex:")) return true;
+  if (!pat || typeof pat !== "string") return false;
+  if (!pat.startsWith("regex:")) return true; // hostname/wildcard/URL patterns have no regex safety constraints
   const raw = pat.slice(6);
   if (raw.length > 200) return false;
   // Adjacent quantifiers: a+*, a**, a{3}* etc.
