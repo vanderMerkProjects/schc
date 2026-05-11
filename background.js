@@ -71,8 +71,9 @@ function isPatternSafe(pat) {
   const raw = pat.slice(6);
   if (raw.length > 200) return false;
   // Adjacent quantifiers: a+*, a**, a{3}* etc.
+  // Strip escape sequences first so \++ (escaped literal, then quantifier) isn't falsely rejected.
   // Second token excludes ? so that lazy quantifiers (*?, +?, ??, {n}?) are allowed.
-  if (/([+*?]|\{[^}]+\})([+*]|\{)/.test(raw)) return false;
+  if (/([+*?]|\{[^}]+\})([+*]|\{)/.test(raw.replace(/\\./g, "X"))) return false;
   // Nested quantifiers at any depth: (a+)+, ((a)+)+, ([a-z]+)* etc.
   if (hasNestedQuantifier(raw)) return false;
   try { new RegExp(raw); return true; } catch (_e) { return false; }
