@@ -1,0 +1,28 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Build / packaging artifacts
+dist/
+build/
+node_modules/
+*.crx
+*.pem
+*.zip
+
+# Local environment
+.env
+.env.local

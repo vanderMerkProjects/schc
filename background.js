@@ -4,6 +4,7 @@
 try { importScripts('browser-polyfill.min.js'); } catch (_) {}
 try { importScripts('tldts.min.js'); } catch (_) {}
 
+const VERSION = chrome.runtime.getManifest().version;
 const DEFAULT_RULES = [{ pattern: "example.com", clearCookies: false, clearStorage: false }];
 
 // --- i18n helpers
@@ -32,11 +33,16 @@ let ruleCache = []; // [{pattern, clearCookies, clearStorage, test(url)}]
 
 function makeTester(pat) {
   if (!pat || typeof pat !== "string") return () => false;
+  // guard against excessively long patterns
+  if (pat.length > 300) return () => false;
 
   // regex:
   if (pat.startsWith("regex:")) {
+    const rawPat = pat.slice(6);
+    // ReDoS guard: reject patterns that are too long or have nested quantifiers
+    if (rawPat.length > 200 || /(\+|\*|\?|\{[^}]+\})(\+|\*|\?|\{)/.test(rawPat)) return () => false;
     try {
-      const re = new RegExp(pat.slice(6));
+      const re = new RegExp(rawPat);
       return (url) => isWebUrl(url) && re.test(url);
     } catch { return () => false; }
   }
@@ -96,8 +102,16 @@ chrome.runtime.onInstalled.addListener(async () => {
   chrome.action.setBadgeBackgroundColor({ color: "#16a34a" });
 });
 
-chrome.storage.onChanged.addListener((chg, area) => {
-  if (area === "sync" && chg.rules) rebuildCache();
+// Rebuild cache when Chrome restarts and revives the service worker
+chrome.runtime.onStartup.addListener(rebuildCache);
+
+chrome.storage.onChanged.addListener(async (chg, area) => {
+  if (area === "sync" && chg.rules) {
+    await rebuildCache();
+    // Refresh badge for all active tabs so the indicator stays current
+    const tabs = await chrome.tabs.query({ active: true });
+    await Promise.all(tabs.map((t) => t.id ? updateBadgeForTab(t.id, t.url || "") : Promise.resolve()));
+  }
 });
 
 // --- context menu handlers
@@ -214,7 +228,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         (Array.isArray(cur.rules) ? cur.rules : []).forEach((r) => map.set(r.pattern, r));
         inc.forEach((r) => {
           const p = String(r?.pattern || "").trim();
-          if (!p) return;
+          if (!p || p.length > 300) return;
           const prev = map.get(p) || { pattern: p, clearCookies: false, clearStorage: false };
           map.set(p, {
             pattern: p,
@@ -232,7 +246,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     // export
     if (msg?.type === "EXPORT_RULES") {
       const { rules = [] } = await chrome.storage.sync.get("rules");
-      sendResponse({ ok: true, payload: { rules, _version: "1.6.0" } });
+      sendResponse({ ok: true, payload: { rules, _version: VERSION } });
       return;
     }
 
@@ -268,6 +282,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tab?.id) await updateBadgeForTab(tab.id, tab.url);
       sendResponse({ ok: true });
+      return;
+    }
+
+    // pause state for popup display
+    if (msg?.type === "GET_PAUSE_STATE") {
+      const url = typeof msg.url === "string" ? msg.url : "";
+      const host = url ? getHost(url) : null;
+      const { pauseUntil, hostPauses } = await getPauseState();
+      const hostUntil = host ? (Number(hostPauses?.[host] || 0) || 0) : 0;
+      sendResponse({ ok: true, globalUntil: pauseUntil, host, hostUntil, now: now() });
       return;
     }
 

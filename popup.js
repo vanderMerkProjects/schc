@@ -19,6 +19,7 @@ let currentUrl = null;
 let currentHost = null;
 let rules = [];
 let lastErrorCache = null;
+let statusTimer = null;
 
 // i18n: fill elements with data-i18n
 function i18nFill() {
@@ -33,7 +34,7 @@ document.addEventListener("DOMContentLoaded", init);
 
 async function init() {
   i18nFill();
-  $("version").textContent = "v1.6.0";
+  $("version").textContent = "v" + chrome.runtime.getManifest().version;
 
   const all = await chrome.storage.sync.get(["rules", "blocklist"]);
   rules = Array.isArray(all.rules)
@@ -76,10 +77,17 @@ async function init() {
     await updatePauseStatus(true);
   });
 
-  // import / export
-  $("importBtn").addEventListener("click", () => $("importFile").click());
+  // rules panel
+  $("addRule").addEventListener("click", () => {
+    rules.push({ pattern: "", clearCookies: false, clearStorage: false });
+    renderRules();
+  });
+  $("saveRules").addEventListener("click", saveRules);
+
+  // import / export — stopPropagation so clicking these doesn't toggle the <details>
+  $("importBtn").addEventListener("click", (e) => { e.stopPropagation(); $("importFile").click(); });
   $("importFile").addEventListener("change", onImportFile);
-  $("exportBtn").addEventListener("click", onExport);
+  $("exportBtn").addEventListener("click", (e) => { e.stopPropagation(); onExport(); });
 
   // error chip
   $("lastError").addEventListener("click", () => {
@@ -89,7 +97,15 @@ async function init() {
   });
 }
 
-function mini(text) { $("miniStatus").textContent = text; }
+function mini(text) {
+  $("miniStatus").textContent = text;
+}
+
+function status(text) {
+  $("status").textContent = text;
+  clearTimeout(statusTimer);
+  statusTimer = setTimeout(() => { $("status").textContent = ""; }, 3000);
+}
 
 async function refreshLastErrorChip() {
   const res = await sendMessage({ type: "GET_LAST_ERROR" });
@@ -117,8 +133,8 @@ async function updatePauseStatus(refreshBadge = false) {
     }
   };
   if (refreshBadge) {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab?.id) await sendMessage({ type: "TEST_MATCH", url: currentUrl || "" }); // poke bg
+    // poke the background so it updates the active tab's badge
+    await sendMessage({ type: "TEST_MATCH", url: currentUrl || "" });
   }
 }
 function fmtTime(ts) { return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
@@ -140,15 +156,15 @@ async function refreshMatchChip() {
 function setAddRemoveButton(listed) {
   const btn = $("addThisSite");
   if (listed) {
-    btn.textContent = "Remove this site";
+    btn.textContent = chrome.i18n.getMessage("uiRemoveSite") || "Remove this site";
     btn.classList.remove("primary");
     btn.classList.add("danger");
-    btn.setAttribute("aria-label", "Remove this site");
+    btn.setAttribute("aria-label", chrome.i18n.getMessage("uiRemoveSite") || "Remove this site");
   } else {
     btn.textContent = chrome.i18n.getMessage("uiAddSite") || "Add this site";
     btn.classList.add("primary");
     btn.classList.remove("danger");
-    btn.setAttribute("aria-label", "Add this site");
+    btn.setAttribute("aria-label", chrome.i18n.getMessage("uiAddSite") || "Add this site");
   }
 }
 
@@ -162,7 +178,7 @@ async function onAddThisSite() {
   if (!currentHost) return;
   const idx = rules.findIndex(r => r.pattern === currentHost);
   if (idx === -1) {
-    rules.unshift({ pattern: currentHost, clearCookies:false, clearStorage:false });
+    rules.unshift({ pattern: currentHost, clearCookies: false, clearStorage: false });
     await chrome.storage.sync.set({ rules });
     renderRules();
   } else {
@@ -172,8 +188,6 @@ async function onAddThisSite() {
   }
   await refreshMatchChip();
   refreshHostToggleButtons();
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tab?.id) await sendMessage({ type: "ADD_HOST", url: currentUrl, tabId: tab.id }); // harmless if it already existed
 }
 
 function refreshHostToggleButtons() {
@@ -206,7 +220,7 @@ function refreshHostToggleButtons() {
 async function toggleFlagForCurrent(flagKey) {
   if (!currentHost) return;
   let idx = rules.findIndex(r => r.pattern === currentHost);
-  if (idx === -1) { rules.unshift({ pattern: currentHost, clearCookies:false, clearStorage:false }); idx = 0; }
+  if (idx === -1) { rules.unshift({ pattern: currentHost, clearCookies: false, clearStorage: false }); idx = 0; }
   rules[idx][flagKey] = !rules[idx][flagKey];
   await chrome.storage.sync.set({ rules });
   renderRules();
@@ -225,19 +239,21 @@ function renderRules() {
     const inp = document.createElement("input");
     inp.type = "text";
     inp.value = r.pattern || "";
-    inp.placeholder = "Host, wildcard, exact URL, or regex:^...";
+    inp.placeholder = chrome.i18n.getMessage("uiPatternPlaceholder") || "host, wildcard, exact URL, or regex:^...";
     inp.addEventListener("input", () => { rules[i].pattern = inp.value; });
     tdP.appendChild(inp);
 
     const tdC = document.createElement("td");
     const ckC = document.createElement("input");
     ckC.type = "checkbox"; ckC.checked = !!r.clearCookies;
+    ckC.setAttribute("aria-label", chrome.i18n.getMessage("uiCookies") || "Cookies");
     ckC.addEventListener("change", () => { rules[i].clearCookies = ckC.checked; });
     tdC.appendChild(ckC);
 
     const tdS = document.createElement("td");
     const ckS = document.createElement("input");
     ckS.type = "checkbox"; ckS.checked = !!r.clearStorage;
+    ckS.setAttribute("aria-label", chrome.i18n.getMessage("uiSiteData") || "Site data");
     ckS.addEventListener("change", () => { rules[i].clearStorage = ckS.checked; });
     tdS.appendChild(ckS);
 
@@ -267,7 +283,7 @@ async function saveRules() {
   rules = clean;
   await chrome.storage.sync.set({ rules });
   renderRules();
-  $("status").textContent = chrome.i18n.getMessage("uiSaved") || "Rules saved ✓";
+  status(chrome.i18n.getMessage("uiSaved") || "Rules saved ✓");
   await refreshMatchChip();
   refreshHostToggleButtons();
 }
@@ -275,14 +291,14 @@ async function saveRules() {
 // --- import/export
 async function onExport() {
   const res = await sendMessage({ type: "EXPORT_RULES" });
-  if (!res?.ok) { $("status").textContent = "Export failed"; return; }
+  if (!res?.ok) { status(chrome.i18n.getMessage("uiExportFailed") || "Export failed"); return; }
   const blob = new Blob([JSON.stringify(res.payload, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url; a.download = "selective-cleaner-rules.json";
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
-  $("status").textContent = chrome.i18n.getMessage("uiExported") || "Exported ✓";
+  status(chrome.i18n.getMessage("uiExported") || "Exported ✓");
 }
 
 async function onImportFile(e) {
@@ -291,19 +307,23 @@ async function onImportFile(e) {
   try {
     const text = await file.text();
     const json = JSON.parse(text);
+    if (!json || typeof json !== "object" || !Array.isArray(json.rules)) {
+      status(chrome.i18n.getMessage("uiInvalidFile") || "Invalid file");
+      return;
+    }
     const res = await sendMessage({ type: "IMPORT_RULES", payload: json });
     if (res?.ok) {
       const all = await chrome.storage.sync.get("rules");
       rules = Array.isArray(all.rules) ? all.rules : [];
       renderRules();
-      $("status").textContent = chrome.i18n.getMessage("uiImported") || "Imported ✓";
+      status(chrome.i18n.getMessage("uiImported") || "Imported ✓");
       await refreshMatchChip();
       refreshHostToggleButtons();
     } else {
-      $("status").textContent = "Import failed";
+      status(chrome.i18n.getMessage("uiImportFailed") || "Import failed");
     }
   } catch {
-    $("status").textContent = "Invalid file";
+    status(chrome.i18n.getMessage("uiInvalidFile") || "Invalid file");
   } finally {
     e.target.value = "";
   }
