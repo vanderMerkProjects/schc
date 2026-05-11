@@ -37,7 +37,11 @@ function isPatternSafe(pat) {
   if (!pat || typeof pat !== "string" || pat.length > 300) return false;
   if (!pat.startsWith("regex:")) return true;
   const raw = pat.slice(6);
-  if (raw.length > 200 || /(\+|\*|\?|\{[^}]+\})(\+|\*|\?|\{)/.test(raw)) return false;
+  if (raw.length > 200) return false;
+  // Adjacent quantifiers: a+*, a**, a{3}* etc.
+  if (/([+*?]|\{[^}]+\})([+*?]|\{)/.test(raw)) return false;
+  // Nested quantifiers: (a+)+ or (.*){2} — catastrophic backtracking risk
+  if (/\([^)]*[+*?][^)]*\)[+*?{]/.test(raw)) return false;
   try { new RegExp(raw); return true; } catch (_e) { return false; }
 }
 
