@@ -35,9 +35,13 @@ let ruleCache = []; // [{pattern, clearCookies, clearStorage, test(url)}]
 // pattern rejected at match time is also rejected at import time.
 
 // Stack-based scan: returns true if any group that contains a quantifier
-// is itself followed by a quantifier — catches (a+)+, ((a)+)+, ([a-z]+)* etc.
+// is itself followed by a repetition quantifier (+, *, {) — catches
+// (a+)+, ((a)+)+, ([a-z]+)* etc. while allowing safe patterns like
+// (?:https?:\/\/)? where ? is group syntax or a single-optional outer.
 function hasNestedQuantifier(raw) {
   const isQ = (ch) => ch === "+" || ch === "*" || ch === "?" || ch === "{";
+  // Only + * { on the outer group risk exponential backtracking; ? (zero-or-one) is safe
+  const isRepeat = (ch) => ch === "+" || ch === "*" || ch === "{";
   let depth = 0;
   const hasQ = [false]; // hasQ[depth] — did this group see a quantifier?
   for (let i = 0; i < raw.length; i++) {
@@ -48,11 +52,13 @@ function hasNestedQuantifier(raw) {
       while (i < raw.length && raw[i] !== "]") { if (raw[i] === "\\") i++; i++; }
       continue;
     }
-    if (ch === "(") { hasQ[++depth] = false; }
-    else if (ch === ")") {
+    if (ch === "(") {
+      hasQ[++depth] = false;
+      if (raw[i + 1] === "?") i++; // skip group-syntax ? in (?:…), (?=…), (?!…), (?<=…)
+    } else if (ch === ")") {
       if (depth > 0) {
         const inner = hasQ[depth--];
-        if (inner && isQ(raw[i + 1] || "")) return true;
+        if (inner && isRepeat(raw[i + 1] || "")) return true;
       }
     } else if (depth > 0 && isQ(ch)) { hasQ[depth] = true; }
   }
