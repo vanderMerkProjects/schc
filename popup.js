@@ -8,7 +8,7 @@ function getHost(input) {
       const h = window.tldts.getHostname(input);
       if (h) return h;
     }
-  } catch {}
+  } catch (_e) { /* tldts unavailable */ }
   try {
     const u = input.includes("://") ? new URL(input) : new URL("https://" + input);
     return u.hostname;
@@ -93,7 +93,7 @@ async function init() {
   $("lastError").addEventListener("click", () => {
     if (!lastErrorCache) return;
     const d = new Date(lastErrorCache.time);
-    alert(`[${d.toLocaleString()}] ${lastErrorCache.where}\n\n${lastErrorCache.message}`);
+    mini(`[${d.toLocaleString()}] ${lastErrorCache.where}: ${lastErrorCache.message}`);
   });
 }
 
@@ -196,10 +196,10 @@ function refreshHostToggleButtons() {
   if (!currentHost) {
     btnCookies.classList.remove("active");
     btnCookies.setAttribute("aria-pressed", "false");
-    btnCookies.innerHTML = `+ 🍪 <span data-i18n="uiCookies">${chrome.i18n.getMessage("uiCookies") || "Cookies"}</span>`;
+    btnCookies.textContent = `+ 🍪 ${chrome.i18n.getMessage("uiCookies") || "Cookies"}`;
     btnStorage.classList.remove("active");
     btnStorage.setAttribute("aria-pressed", "false");
-    btnStorage.innerHTML = `+ 💾 <span data-i18n="uiSiteData">${chrome.i18n.getMessage("uiSiteData") || "Site data"}</span>`;
+    btnStorage.textContent = `+ 💾 ${chrome.i18n.getMessage("uiSiteData") || "Site data"}`;
     return;
   }
   const rule = rules.find((r) => r.pattern === currentHost);

@@ -1,8 +1,8 @@
 // Optional helpers (if you drop them in your extension root):
 //  - tldts.min.js for robust hostname parsing
 //  - browser-polyfill.min.js for cross-browser 'browser.*' promises
-try { importScripts('browser-polyfill.min.js'); } catch (_) {}
-try { importScripts('tldts.min.js'); } catch (_) {}
+try { importScripts('browser-polyfill.min.js'); } catch (_e) { /* optional helper, absent in some builds */ }
+try { importScripts('tldts.min.js'); } catch (_e) { /* optional helper, absent in some builds */ }
 
 const VERSION = chrome.runtime.getManifest().version;
 const DEFAULT_RULES = [{ pattern: "example.com", clearCookies: false, clearStorage: false }];
@@ -19,7 +19,7 @@ function getHost(input) {
       const h = self.tldts.getHostname(input);
       if (h) return h;
     }
-  } catch {}
+  } catch (_e) { /* tldts unavailable */ }
   try {
     const u = input.includes("://") ? new URL(input) : new URL("https://" + input);
     return u.hostname;
@@ -170,7 +170,7 @@ chrome.webNavigation.onCommitted.addListener(async ({ tabId, url }) => {
     if (!isWebUrl(url) || (await isUrlPaused(url))) return;
     const matched = ruleCache.filter((r) => r.test(url));
     if (!matched.length) return;
-    try { await chrome.history.deleteUrl({ url }); } catch {}
+    try { await chrome.history.deleteUrl({ url }); } catch (_e) { /* history entry may already be gone */ }
     await maybeZapSiteData(url, matched);
     await updateBadgeForTab(tabId, url);
   } catch (e) { await recordError(e, "webNavigation.onCommitted"); }
@@ -331,7 +331,7 @@ async function maybeZapSiteData(url, matchedRules) {
     const origin = new URL(url).origin;
     if (matchedRules.some((m) => m.clearCookies)) cookieOrigins.add(origin);
     if (matchedRules.some((m) => m.clearStorage)) storageOrigins.add(origin);
-  } catch {}
+  } catch (_e) { /* invalid URL, nothing to clear */ }
 
   if (cookieOrigins.size) {
     try { await chrome.browsingData.removeCookies({ origins: [...cookieOrigins] }); }
