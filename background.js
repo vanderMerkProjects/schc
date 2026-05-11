@@ -33,6 +33,32 @@ let ruleCache = []; // [{pattern, clearCookies, clearStorage, test(url)}]
 
 // Shared validation used by both makeTester and the import path so that a
 // pattern rejected at match time is also rejected at import time.
+
+// Stack-based scan: returns true if any group that contains a quantifier
+// is itself followed by a quantifier — catches (a+)+, ((a)+)+, ([a-z]+)* etc.
+function hasNestedQuantifier(raw) {
+  const isQ = (ch) => ch === "+" || ch === "*" || ch === "?" || ch === "{";
+  let depth = 0;
+  const hasQ = [false]; // hasQ[depth] — did this group see a quantifier?
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (ch === "\\") { i++; continue; } // skip escaped char
+    if (ch === "[") { // skip character class entirely
+      i++;
+      while (i < raw.length && raw[i] !== "]") { if (raw[i] === "\\") i++; i++; }
+      continue;
+    }
+    if (ch === "(") { hasQ[++depth] = false; }
+    else if (ch === ")") {
+      if (depth > 0) {
+        const inner = hasQ[depth--];
+        if (inner && isQ(raw[i + 1] || "")) return true;
+      }
+    } else if (depth > 0 && isQ(ch)) { hasQ[depth] = true; }
+  }
+  return false;
+}
+
 function isPatternSafe(pat) {
   if (!pat || typeof pat !== "string" || pat.length > 300) return false;
   if (!pat.startsWith("regex:")) return true;
@@ -40,8 +66,8 @@ function isPatternSafe(pat) {
   if (raw.length > 200) return false;
   // Adjacent quantifiers: a+*, a**, a{3}* etc.
   if (/([+*?]|\{[^}]+\})([+*?]|\{)/.test(raw)) return false;
-  // Nested quantifiers: (a+)+ or (.*){2} — catastrophic backtracking risk
-  if (/\([^)]*[+*?][^)]*\)[+*?{]/.test(raw)) return false;
+  // Nested quantifiers at any depth: (a+)+, ((a)+)+, ([a-z]+)* etc.
+  if (hasNestedQuantifier(raw)) return false;
   try { new RegExp(raw); return true; } catch (_e) { return false; }
 }
 
